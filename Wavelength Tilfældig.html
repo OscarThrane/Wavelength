@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wavelength spil</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+      max-width: 1900px;
+      margin: 3em auto;
+      padding: 2em;
+      background: #f0f4f8;
+      color: #222;
+      text-align: center;
+    }
+    h1 {
+      font-weight: 600;
+      color: #1a73e8;
+      margin-bottom: 1em;
+      user-select: none;
+    }
+    #scaleContainer {
+      position: relative;
+      margin: 2em auto;
+      width: 1800px;
+      height: 60px;
+      background: #e1e7ef;
+      border-radius: 30px;
+      box-shadow: inset 0 3px 6px rgb(0 0 0 / 0.1);
+      display: flex;
+      align-items: center;
+      user-select: none;
+    }
+    #leftHint, #rightHint {
+      width: 110px;
+      font-size: 1rem;
+      border: none;
+      background: transparent;
+      color: #444;
+      font-weight: 600;
+      user-select: auto;
+      padding: 0 0.6em;
+      border-radius: 12px;
+      text-align: center;
+    }
+    #leftHint {
+      border-right: 1.5px solid #ccc;
+    }
+    #rightHint {
+      border-left: 1.5px solid #ccc;
+    }
+    #scale {
+      flex: 1;
+      height: 48px;
+      border-radius: 24px;
+      margin: 0 10px;
+      position: relative;
+      background: #e1e7ef;
+    }
+    #targetZone {
+      position: absolute;
+      top: 0;
+      height: 48px;
+      display: flex;
+      border-radius: 24px;
+      pointer-events: none;
+      box-shadow: 0 0 8px rgba(0,0,0,0.15);
+    }
+    .zone-part {
+      flex: 1;
+      height: 100%;
+    }
+    .zone-red { background: rgba(255, 77, 79, 0.7); }
+    .zone-yellow { background: rgba(255, 195, 0, 0.75); }
+    .zone-green { background: rgba(76, 175, 80, 0.75); }
+
+    #guessPointer {
+      position: absolute;
+      top: -20px;
+      width: 6px;
+      height: 88px;
+      background: #1a73e8;
+      border-radius: 3px;
+      cursor: grab;
+      box-shadow: 0 2px 8px rgba(26, 115, 232, 0.6);
+    }
+    #guessPointer:active {
+      background-color: #0c47b7;
+      cursor: grabbing;
+    }
+
+    button {
+      margin: 0.5em 0.3em;
+      padding: 0.6em 1.6em;
+      font-size: 1.05rem;
+      border: none;
+      border-radius: 30px;
+      background: #1a73e8;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 5px 10px rgb(26 115 232 / 0.4);
+    }
+    button:disabled {
+      background: #a1c2fa;
+      cursor: default;
+      box-shadow: none;
+    }
+
+    #instruction {
+      font-weight: 600;
+      font-size: 1.15rem;
+      margin: 1.5em 0 1em;
+      color: #444;
+      min-height: 48px;
+    }
+
+    #scoreDisplay {
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-top: 2em;
+      color: #1a73e8;
+    }
+
+    .btn-group {
+      margin-top: 1.2em;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Wavelength spil</h1>
+
+<div id="instruction">Klik på "Sæt målzone" for at starte</div>
+
+<div id="scaleContainer">
+  <input type="text" id="leftHint" />
+  <div id="scale"></div>
+  <input type="text" id="rightHint" />
+</div>
+
+<div class="btn-group">
+  <button id="setZoneBtn">Sæt målzone (Spiller 1)</button>
+  <button id="hideZoneBtn" disabled>Skjul zone (Spiller 1)</button>
+  <button id="guessBtn" disabled>Gæt (Spiller 2)</button>
+</div>
+
+<div id="scoreDisplay">Samlet point: 0 / 20</div>
+
+<div class="btn-group">
+  <button id="resetPointsBtn">Nulstil point</button>
+  <button id="resetBtn">Reset spil</button>
+</div>
+
+<script>
+  const scale = document.getElementById('scale');
+  const instruction = document.getElementById('instruction');
+  const setZoneBtn = document.getElementById('setZoneBtn');
+  const hideZoneBtn = document.getElementById('hideZoneBtn');
+  const guessBtn = document.getElementById('guessBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const resetPointsBtn = document.getElementById('resetPointsBtn');
+  const scoreDisplay = document.getElementById('scoreDisplay');
+
+  let score = 0;
+  let targetStartPx = null;
+  const targetWidthPx = 144;
+  let scaleRect = null;
+
+  let guessPointer = null;
+  let guessX = null;
+  let waitingForSetZone = true;
+  let waitingForGuess = false;
+
+  setZoneBtn.onclick = () => {
+    scaleRect = scale.getBoundingClientRect();
+    const maxX = scale.clientWidth - targetWidthPx;
+    targetStartPx = Math.floor(Math.random() * maxX);
+    instruction.textContent = `Spiller 1: Tryk "Skjul zone" for at give turen til Spiller 2`;
+    setZoneBtn.disabled = true;
+    hideZoneBtn.disabled = false;
+    waitingForSetZone = false;
+    drawTargetPreview();
+  };
+
+  hideZoneBtn.onclick = () => {
+    scale.innerHTML = '';
+    instruction.textContent = `Spiller 2: Gæt position ved at trække markøren og tryk "Gæt"`;
+    addGuessPointer();
+    guessBtn.disabled = false;
+    hideZoneBtn.disabled = true;
+    waitingForGuess = true;
+  };
+
+  function drawTargetPreview() {
+    const zone = document.createElement('div');
+    zone.id = 'targetZone';
+    zone.style.left = targetStartPx + 'px';
+    zone.style.width = targetWidthPx + 'px';
+    const parts = ['zone-red', 'zone-yellow', 'zone-green', 'zone-yellow', 'zone-red'];
+    parts.forEach(part => {
+      const div = document.createElement('div');
+      div.className = 'zone-part ' + part;
+      zone.appendChild(div);
+    });
+    scale.innerHTML = '';
+    scale.appendChild(zone);
+  }
+
+  function addGuessPointer() {
+    guessPointer = document.createElement('div');
+    guessPointer.id = 'guessPointer';
+    guessPointer.style.left = '0px';
+    scale.appendChild(guessPointer);
+
+    let isDragging = false;
+
+    guessPointer.addEventListener('mousedown', () => { isDragging = true; });
+    window.addEventListener('mouseup', () => { isDragging = false; });
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      let x = e.clientX - scaleRect.left;
+      x = Math.max(0, Math.min(scale.clientWidth, x));
+      guessPointer.style.left = x + 'px';
+      guessX = x;
+    });
+
+    guessPointer.addEventListener('touchstart', () => { isDragging = true; });
+    window.addEventListener('touchend', () => { isDragging = false; });
+    window.addEventListener('touchmove', (e) => {
+      if (!isDragging) return;
+      let x = e.touches[0].clientX - scaleRect.left;
+      x = Math.max(0, Math.min(scale.clientWidth, x));
+      guessPointer.style.left = x + 'px';
+      guessX = x;
+    });
+  }
+
+  guessBtn.onclick = () => {
+    if (guessX === null) {
+      alert('Du skal trække markøren for at gætte.');
+      return;
+    }
+
+    scale.innerHTML = '';
+    drawTargetPreview();
+    addGuessPointer();
+    guessPointer.style.left = guessX + 'px';
+
+    const zoneRelativeX = guessX - targetStartPx;
+    let points = 0;
+    if (zoneRelativeX >= 0 && zoneRelativeX <= targetWidthPx) {
+      const partWidth = targetWidthPx / 5;
+      const partIndex = Math.floor(zoneRelativeX / partWidth);
+      points = [1, 2, 3, 2, 1][partIndex];
+    }
+
+    score = Math.min(20, score + points);
+    scoreDisplay.textContent = `Samlet point: ${score} / 20`;
+    instruction.textContent = 'Klik på "Sæt målzone" for at starte';
+    waitingForSetZone = true;
+    waitingForGuess = false;
+    targetStartPx = null;
+    guessX = null;
+    setZoneBtn.disabled = false;
+  };
+
+  resetBtn.onclick = () => {
+    waitingForSetZone = true;
+    waitingForGuess = false;
+    targetStartPx = null;
+    guessX = null;
+    setZoneBtn.disabled = false;
+    hideZoneBtn.disabled = true;
+    guessBtn.disabled = true;
+    instruction.textContent = 'Klik på "Sæt målzone" for at starte';
+    scale.innerHTML = '';
+  };
+
+  resetPointsBtn.onclick = () => {
+    score = 0;
+    scoreDisplay.textContent = `Samlet point: ${score} / 20`;
+  };
+</script>
+
+</body>
+</html>
